@@ -3,13 +3,18 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Investment Research Agent API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: documents
+    description: Company document management
+  - name: research
+    description: Research and analysis
+
 paths:
   /healthz:
     get:
@@ -24,6 +29,157 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /documents:
+    get:
+      operationId: listDocuments
+      tags: [documents]
+      summary: List uploaded company documents
+      responses:
+        "200":
+          description: List of documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Document"
+
+  /documents/upload:
+    post:
+      operationId: uploadDocument
+      tags: [documents]
+      summary: Upload a company annual report PDF
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/DocumentUpload"
+      responses:
+        "201":
+          description: Document uploaded and indexed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "400":
+          description: Bad request
+
+  /documents/{id}:
+    delete:
+      operationId: deleteDocument
+      tags: [documents]
+      summary: Delete a document and its embeddings
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /research/ask:
+    post:
+      operationId: askResearch
+      tags: [research]
+      summary: Ask the agent a research question about a company
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResearchQuery"
+      responses:
+        "200":
+          description: Agent answer with tool call trace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchAnswer"
+        "400":
+          description: Bad request
+
+  /research/sessions:
+    get:
+      operationId: listSessions
+      tags: [research]
+      summary: List all research sessions
+      responses:
+        "200":
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResearchSession"
+
+  /research/sessions/{sessionId}/messages:
+    get:
+      operationId: getSessionMessages
+      tags: [research]
+      summary: Get message history for a session
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResearchMessage"
+        "404":
+          description: Not found
+
+  /research/sessions/{sessionId}:
+    delete:
+      operationId: deleteSession
+      tags: [research]
+      summary: Delete a research session
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /research/summary/{documentId}:
+    get:
+      operationId: getDocumentSummary
+      tags: [research]
+      summary: Get an AI-generated summary of a company document
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentSummary"
+        "404":
+          description: Not found
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +190,124 @@ components:
       required:
         - status
 
+    Document:
+      type: object
+      required: [id, companyName, fileName, uploadedAt, chunkCount, status]
+      properties:
+        id:
+          type: string
+        companyName:
+          type: string
+        fileName:
+          type: string
+        uploadedAt:
+          type: string
+        chunkCount:
+          type: integer
+        status:
+          type: string
+          enum: [processing, ready, error]
+        summary:
+          type: ["string", "null"]
+
+    DocumentUpload:
+      type: object
+      required: [companyName]
+      properties:
+        companyName:
+          type: string
+
+    ResearchQuery:
+      type: object
+      required: [question, documentId]
+      properties:
+        question:
+          type: string
+        documentId:
+          type: string
+        sessionId:
+          type: ["string", "null"]
+
+    ToolCall:
+      type: object
+      required: [tool, input, output]
+      properties:
+        tool:
+          type: string
+        input:
+          type: string
+        output:
+          type: string
+
+    ResearchAnswer:
+      type: object
+      required: [answer, toolCalls, sessionId, messageId]
+      properties:
+        answer:
+          type: string
+        toolCalls:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolCall"
+        sessionId:
+          type: string
+        messageId:
+          type: string
+        sources:
+          type: array
+          items:
+            type: string
+
+    ResearchSession:
+      type: object
+      required: [id, documentId, companyName, createdAt, messageCount]
+      properties:
+        id:
+          type: string
+        documentId:
+          type: string
+        companyName:
+          type: string
+        createdAt:
+          type: string
+        messageCount:
+          type: integer
+        lastMessage:
+          type: ["string", "null"]
+
+    ResearchMessage:
+      type: object
+      required: [id, sessionId, role, content, createdAt]
+      properties:
+        id:
+          type: string
+        sessionId:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        createdAt:
+          type: string
+        toolCalls:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolCall"
+
+    DocumentSummary:
+      type: object
+      required: [documentId, companyName, summary, keyMetrics, generatedAt]
+      properties:
+        documentId:
+          type: string
+        companyName:
+          type: string
+        summary:
+          type: string
+        keyMetrics:
+          type: array
+          items:
+            type: string
+        generatedAt:
+          type: string
